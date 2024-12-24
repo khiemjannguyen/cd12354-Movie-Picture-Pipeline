@@ -24,7 +24,7 @@ npm run clean > /dev/null 2>&1
 
 echo "Installing frontend dependencies..."
 nvm install > /dev/null 2>&1
-npm ci --silent > /dev/null 2>&1
+npm install --silent > /dev/null 2>&1
 echo "Done configuring frontend!"
 cd $project_dir
 
