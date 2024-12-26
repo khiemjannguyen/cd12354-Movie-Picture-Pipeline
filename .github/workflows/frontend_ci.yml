@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 defaults:
-  run:
-    working-directory: ./starter/backend
+      run:
+        working-directory: ./starter/frontend
 
 jobs:
   lint:

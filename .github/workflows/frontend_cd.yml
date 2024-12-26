@@ -10,13 +10,12 @@ on:
       - main
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: ./starter/frontend
-
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./setup/terraform
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,9 +41,68 @@ jobs:
         run: |
           echo "FRONTEND_ECR=$(jq -r '.frontend_ecr.value' terraform_outputs.json)" >> $GITHUB_ENV
 
-  build-and-deploy:
-    needs: terraform
+  lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./starter/frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('starter/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run lint
+        run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./starter/frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm run test
+
+  build-and-deploy:
+    needs: [terraform, lint, test]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./starter/frontend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -89,6 +147,9 @@ jobs:
   terraform-destroy:
     needs: build-and-deploy
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./setup/terraform
     if: always()
     steps:
       - name: Checkout code
