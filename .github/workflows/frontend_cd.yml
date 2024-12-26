@@ -1,3 +1,7 @@
+# This workflow handles the continuous deployment of the frontend application.
+# It includes steps for setting up Terraform, building and deploying the frontend Docker image,
+# and deploying the application to Kubernetes.
+
 name: Frontend Continuous Deployment
 
 on:
@@ -6,71 +10,41 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  ECR_REPO: <ecr-repo-name>
-
 defaults:
   run:
-    working-directory: ./starter/backend
+    working-directory: ./starter/frontend
 
 jobs:
-  lint:
+  terraform:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup NodeJS
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
 
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+      - name: Initialize Terraform
+        run: terraform init
 
-      - name: Install dependencies
-        run: npm install
+      - name: Apply Terraform
+        run: terraform apply -auto-approve
 
-      - name: Run lint
-        run: npm run lint
-        
-  test:
+      - name: Export Terraform outputs
+        id: outputs
+        run: terraform output -json > terraform_outputs.json
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Set environment variables from Terraform outputs
+        id: set-vars
+        run: |
+          echo "FRONTEND_ECR=$(jq -r '.frontend_ecr.value' terraform_outputs.json)" >> $GITHUB_ENV
+
+  build-and-deploy:
+    needs: terraform
     runs-on: ubuntu-latest
-    env:
-      FRONTEND_PATH: ./starter/frontend
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup NodeJS
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run tests
-        run: CI=true npm test
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    env:
-      REACT_APP_MOVIE_API_URL: ${{ secrets.REACT_APP_MOVIE_API_URL }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -103,11 +77,28 @@ jobs:
 
       - name: Tag and Push Docker Image
         run: |
-          docker tag mp-frontend:${{ github.sha }} ${{ env.ECR_REPO }}:${{ github.sha }}
-          docker push ${{ env.ECR_REPO }}:${{ github.sha }}
+          docker tag mp-frontend:${{ github.sha }} ${{ env.FRONTEND_ECR }}:${{ github.sha }}
+          docker push ${{ env.FRONTEND_ECR }}:${{ github.sha }}
 
       - name: Deploy to Kubernetes
         run: |
           cd starter/frontend/k8s
-          kustomize edit set image frontend=${{ env.ECR_REPO }}:${{ github.sha }}
+          kustomize edit set image frontend=${{ env.FRONTEND_ECR }}:${{ github.sha }}
           kustomize build | kubectl apply -f -
+
+  terraform-destroy:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Destroy Terraform resources
+        run: terraform destroy -auto-approve

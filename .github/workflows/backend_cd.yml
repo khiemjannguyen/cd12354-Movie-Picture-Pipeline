@@ -6,32 +6,49 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  ECR_REPO: <ecr-repo-name>
-
 defaults:
   run:
     working-directory: ./starter/backend
 
 jobs:
-  lint:
+  terraform:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup NodeJS
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
 
-      - name: Restore cache
-        uses: actions/cache@v4
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Apply Terraform
+        run: terraform apply -auto-approve
+
+      - name: Export Terraform outputs
+        id: outputs
+        run: terraform output -json > terraform_outputs.json
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Set environment variables from Terraform outputs
+        id: set-vars
+        run: |
+          echo "BACKEND_ECR=$(jq -r '.backend_ecr.value' terraform_outputs.json)" >> $GITHUB_ENV
+
+  lint:
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+          python-version: '3.10'
 
       - name: Install dependencies
         run: pipenv install
@@ -40,6 +57,7 @@ jobs:
         run: pipenv run lint
         
   test:
+    needs: terraform
     runs-on: ubuntu-latest
     env:
       FRONTEND_PATH: ./starter/frontend
@@ -47,18 +65,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup NodeJS
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v2
         with:
-          node-version: '18'
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+          python-version: '3.10'
 
       - name: Install dependencies
         run: pipenv install
@@ -68,7 +78,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [terraform, lint, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -86,11 +96,28 @@ jobs:
 
       - name: Push Docker image to ECR
         run: |
-          docker tag mp-backend:${{ github.sha }} ${{ env.ECR_REPO }}:${{ github.sha }}
-          docker push ${{ env.ECR_REPO }}:${{ github.sha }}
+          docker tag mp-backend:${{ github.sha }} ${{ env.BACKEND_ECR }}:${{ github.sha }}
+          docker push ${{ env.BACKEND_ECR }}:${{ github.sha }}
 
       - name: Deploy to Kubernetes
         run: |
           cd starter/backend/k8s
-          kustomize edit set image backend=${{ env.ECR_REPO }}:${{ github.sha }}
+          kustomize edit set image backend=${{ env.BACKEND_ECR }}:${{ github.sha }}
           kustomize build | kubectl apply -f -
+
+  terraform-destroy:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Destroy Terraform resources
+        run: terraform destroy -auto-approve
