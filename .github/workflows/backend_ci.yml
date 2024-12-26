@@ -31,10 +31,10 @@ jobs:
             ${{ runner.os }}-npm-
 
       - name: Install dependencies
-        run: npm install
+        run: pipenv install
 
       - name: Run lint
-        run: npm run lint
+        run: pipenv run lint
 
   test:
     runs-on: ubuntu-latest
@@ -56,10 +56,10 @@ jobs:
             ${{ runner.os }}-npm-
 
       - name: Install dependencies
-        run: npm install
+        run: pipenv install
 
-      - name: Run tests
-        run: npm run test
+      - name: Run test
+        run: pipenv run test
 
   build:
     runs-on: ubuntu-latest
@@ -70,5 +70,4 @@ jobs:
 
       - name: Build Docker image
         run: |
-          cd starter/backend
           docker build --tag mp-backend:latest .
