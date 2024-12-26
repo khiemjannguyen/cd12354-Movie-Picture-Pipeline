@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  BACKEND_ECR: <backend_ecr_url> # Replace with your backend ECR URL (295436541395.dkr.ecr.us-east-1.amazonaws.com/backend)
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -86,8 +89,8 @@ jobs:
 
       - name: Push Docker image to ECR
         run: |
-          docker tag mp-backend:${{ github.sha }} 295436541395.dkr.ecr.us-east-1.amazonaws.com/backend:${{ github.sha }}
-          docker push 295436541395.dkr.ecr.us-east-1.amazonaws.com/backend:${{ github.sha }}
+          docker tag mp-backend:${{ github.sha }} ${{ env.BACKEND_ECR }}:${{ github.sha }}
+          docker push ${{ env.BACKEND_ECR }}:${{ github.sha }}
 
       - name: Configure kubectl
         run: |
@@ -96,5 +99,5 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           cd k8s
-          kustomize edit set image backend=295436541395.dkr.ecr.us-east-1.amazonaws.com/backend:${{ github.sha }}
+          kustomize edit set image backend=${{ env.BACKEND_ECR }}:${{ github.sha }}
           kustomize build | kubectl apply -f - --validate=false
