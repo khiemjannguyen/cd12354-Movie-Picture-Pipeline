@@ -9,6 +9,10 @@ on:
 env:
   ECR_REPO: <ecr-repo-name>
 
+defaults:
+  run:
+    working-directory: ./starter/backend
+
 jobs:
   lint:
     runs-on: ubuntu-latest
