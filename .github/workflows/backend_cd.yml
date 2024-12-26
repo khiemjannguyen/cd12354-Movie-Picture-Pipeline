@@ -70,7 +70,6 @@ jobs:
 
       - name: Build Docker image
         run: |
-          cd starter/backend
           docker build -t mp-backend:${{ github.sha }} .
 
       - name: Login to ECR
