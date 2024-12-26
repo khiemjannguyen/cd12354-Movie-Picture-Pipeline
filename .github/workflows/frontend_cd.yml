@@ -1,7 +1,3 @@
-# This workflow handles the continuous deployment of the frontend application.
-# It includes steps for setting up Terraform, building and deploying the frontend Docker image,
-# and deploying the application to Kubernetes.
-
 name: Frontend Continuous Deployment
 
 on:
